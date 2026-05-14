@@ -75,17 +75,23 @@ class BotSession {
       );
 
       _startedAt = DateTime.now();
-      
+
       // Cache metadata
       try {
-        final app = await (_gateway! as dynamic).client.applications.fetchCurrentApplication();
+        // Some Nyxx versions expose the underlying client via `.client`.
+        // Use dynamic access to avoid static type issues across versions.
+        final app = await ((_gateway! as dynamic).client as dynamic).applications.fetchCurrentApplication();
         _ownerId = app.owner?.id.toString() ?? '';
-      } catch (_) {}
+      } catch (_) {
+        // ignore errors fetching application metadata
+      }
 
       try {
         final commands = await store.listAppCommands(botId);
         _commandCount = commands.length;
-      } catch (_) {}
+      } catch (_) {
+        // ignore errors listing commands
+      }
 
       _presenceManager = PresenceManager(
         botId: botId,
@@ -131,7 +137,9 @@ class BotSession {
     try {
       final commands = await store.listAppCommands(botId);
       _commandCount = commands.length;
-    } catch (_) {}
+    } catch (_) {
+      // ignore
+    }
   }
 
   /// Stops the bot session and cleans up resources.
@@ -171,8 +179,8 @@ class BotSession {
     _metricsTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _reportMetrics();
     });
-    // Initial report
-    Timer(const Duration(seconds: 5), _reportMetrics);
+    // Initial report after short delay
+    Timer(const Duration(seconds: 5), () => _reportMetrics());
   }
 
   void _reportMetrics() {
@@ -189,9 +197,7 @@ class BotSession {
     );
     try {
       final gatewayManager = gateway.gateway;
-      // In Nyxx 6.x, Gateway is the interface for the gateway manager.
-      // We can access shards if we cast to the implementation or if the interface exposes it.
-      // To be safe and avoid dynamic, we try to use the common shards property if it exists on the interface.
+      // Access shards dynamically to remain compatible across nyxx versions.
       final shards = (gatewayManager as dynamic).shards as List?;
       metrics = BotRuntimeMetrics(
         guildCount: gateway.guilds.cache.length,
